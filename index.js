@@ -30,6 +30,7 @@ const pluginOptions = {
 	exclude: true,
 	extensions: true,
 	emitCss: true,
+	extractCss: true,
 	preprocess: true,
 
 	// legacy — we might want to remove/change these in a future version
@@ -270,7 +271,7 @@ module.exports = function svelte(options = {}) {
 					}
 				});
 
-				if ((css || options.emitCss) && compiled.css.code) {
+				if ((css || options.emitCss || options.extractCss) && compiled.css.code) {
 					let fname = id.replace(new RegExp(`\\${extension}$`), '.css');
 
 					if (options.emitCss) {
@@ -293,48 +294,92 @@ module.exports = function svelte(options = {}) {
 			});
 		},
 		generateBundle() {
+			if ( options.extractCss ) { // Extracts component CSS into their own file(s)
+				// Bundle into one file by default
+				const files = Array.from(cssLookup.values());
+				const bundle = mergeFiles(files);
+
+				let fileName = Object.keys(bundle)[0].split('.').shift() + '.css';
+				if(typeof options.extractCss === 'string') {
+					fileName = options.extractCss;
+				}
+
+				if (bundle.map) {
+					bundle.code += '\n/*# sourceMappingURL=${fileName}.map */';
+
+					const mapSource = JSON.stringify({
+						...bundle.map,
+						version: 3,
+						file: fileName,
+						sources: bundle.map.sources.map(p => path.basename(p))
+					});
+
+					this.emitFile({
+						type: 'asset',
+						fileName: fileName + '.map',
+						source: mapSource
+					});
+				}
+
+				this.emitFile({
+					type: 'asset',
+					fileName,
+					source: bundle.code
+				});
+			}
+
+			// TODO: Deprecate?
 			if (css) {
 				// write out CSS file. TODO would be nice if there was a
 				// a more idiomatic way to do this in Rollup
-				let result = '';
+				
+				const files = Array.from(cssLookup.keys()).sort().map(k => cssLookup.get(k));
+				const bundle = mergeFiles(files);
 
-				const mappings = [];
-				const sources = [];
-				const sourcesContent = [];
-
-				const chunks = Array.from(cssLookup.keys()).sort().map(key => cssLookup.get(key));
-
-				for (let chunk of chunks) {
-					if (!chunk.code) continue;
-					result += chunk.code + '\n';
-
-					if (chunk.map) {
-						const i = sources.length;
-						sources.push(chunk.map.sources[0]);
-						sourcesContent.push(chunk.map.sourcesContent[0]);
-
-						const decoded = decode(chunk.map.mappings);
-
-						if (i > 0) {
-							decoded.forEach(line => {
-								line.forEach(segment => {
-									segment[1] = i;
-								});
-							});
-						}
-
-						mappings.push(...decoded);
-					}
-				}
-
-				const writer = new CssWriter(result, {
-					sources,
-					sourcesContent,
-					mappings: encode(mappings)
-				}, this.warn);
+				const writer = new CssWriter(bundle.code, bundle.map, this.warn);
 
 				css(writer);
 			}
 		}
 	};
 };
+
+function mergeFiles(files) {
+	let code = '';
+
+	const mappings = [];
+	const sources = [];
+	const sourcesContent = [];
+
+	for (let chunk of files) {
+		if (!chunk.code) continue;
+		code += chunk.code + '\n';
+
+		if (chunk.map) {
+			const i = sources.length;
+			sources.push(chunk.map.sources[0]);
+			sourcesContent.push(chunk.map.sourcesContent[0]);
+
+			const decoded = decode(chunk.map.mappings);
+
+			if (i > 0) {
+				decoded.forEach(line => {
+					line.forEach(segment => {
+						segment[1] = i;
+					});
+				});
+			}
+
+			mappings.push(...decoded);
+		}
+	}
+
+	return {
+		code,
+		map: {
+			sources,
+			sourcesContent,
+			mappings: encode(mappings)
+		}
+	};
+}
