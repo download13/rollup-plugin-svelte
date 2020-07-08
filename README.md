@@ -59,10 +59,9 @@ export default {
         console.log(css.code); // the concatenated CSS
         console.log(css.map); // a sourcemap
 
-        // creates `main.css` and `main.css.map`
-        // using a falsy name will default to the bundle name
-        // — pass `false` as the second argument if you don't want the sourcemap
-        css.write('main.css');
+        // creates `main.css` and `main.css.map` — pass `false`
+        // as the second argument if you don't want the sourcemap
+        css.write('public/main.css');
       },
 
       // Warnings are normally passed straight to Rollup. You can
