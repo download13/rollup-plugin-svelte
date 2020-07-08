@@ -337,4 +337,44 @@ describe('rollup-plugin-svelte', () => {
 			fs.readFileSync('test/filename-test/expected/bundle.css', 'utf-8')
 		);
 	});
+
+	it('extracts CSS as rollup asset', async () => {
+		sander.rimrafSync('test/extract-test/dist');
+		sander.mkdirSync('test/extract-test/dist');
+
+		try {
+			const bundle = await rollup.rollup({
+				input: 'test/extract-test/src/foo.svelte.dev/main.js',
+				plugins: [
+					{
+						resolveId: async (id) => {
+							if (/A\.svelte/.test(id)) {
+								await new Promise(f => setTimeout(f, 50));
+							}
+						}
+					},
+					plugin({ extractCss: 'bundle.css' })
+				],
+				external: ['svelte/internal']
+			});
+
+			await bundle.write({
+				format: 'iife',
+				file: 'test/extract-test/dist/bundle.js',
+				globals: { 'svelte/internal': 'svelte' }
+			});
+		} catch (err) {
+			console.log(err);
+			throw err;
+		}
+
+		assert.equal(
+			fs.readFileSync('test/extract-test/dist/bundle.css', 'utf-8'),
+			fs.readFileSync('test/extract-test/expected/bundle.css', 'utf-8')
+		);
+		assert.equal(
+			fs.readFileSync('test/extract-test/dist/bundle.css.map', 'utf-8'),
+			fs.readFileSync('test/extract-test/expected/bundle.css.map', 'utf-8')
+		);
+	});
 });
